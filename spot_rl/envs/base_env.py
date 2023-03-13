@@ -193,6 +193,8 @@ class SpotBaseEnv(SpotRobotSubscriberMixin, gym.Env):
             assert self.filtered_head_depth is not None, "Depth msgs not found!"
             print("...msgs received.")
 
+        self.owlvit_pick_up_object_name = "box"
+
     @property
     def filtered_hand_depth(self):
         return self.msgs[rt.FILTERED_HAND_DEPTH]
@@ -226,7 +228,7 @@ class SpotBaseEnv(SpotRobotSubscriberMixin, gym.Env):
         self.num_steps = 0
         self.reset_ran = True
         self.grasp_attempted = False
-        self.use_mrcnn = True
+        self.use_mrcnn = confg.USE_MRCNN
         self.locked_on_object_count = 0
         self.curr_forget_steps = 0
         self.target_obj_name = target_obj_id
@@ -237,6 +239,8 @@ class SpotBaseEnv(SpotRobotSubscriberMixin, gym.Env):
         self.slowdown_base = -1
         self.prev_base_moved = False
         self.should_end = False
+
+        self.owlvit_pick_up_object_name = "box"
 
         observations = self.get_observations()
         return observations
@@ -652,15 +656,7 @@ class SpotBaseEnv(SpotRobotSubscriberMixin, gym.Env):
                 positions=np.deg2rad(self.config.GAZE_ARM_JOINT_ANGLES), travel_time=1.0
             )
 
-        # Get the target object text name
-        if self.specific_target_text_object is not None:
-            # If we're looking for a specific object, focus on only that
-            self.target_text_obj = self.specific_target_text_object
-        else:
-            return None
-
         marked_img = None
-
         if self.parallel_inference_mode:
             bbox_xy = str(self.detections_str_synced)
         else:
@@ -677,11 +673,8 @@ class SpotBaseEnv(SpotRobotSubscriberMixin, gym.Env):
             if save_image:
                 marked_img = img.copy()
 
-            # Pred return is a one_hot_prediction with the size of
-            # (H, W, 2), 2 here is the size of "other" and the target object "text"
-            # for the onehot encoding
-            owlvit_model.update_label([["box"]])
-            bbox_xy = owlvit_model.run_inference(img)
+            self.owlvit.update_label([[self.owlvit_pick_up_object_name]])
+            bbox_xy = self.owlvit.run_inference(img)
 
             self.curr_forget_steps = 0
             self.last_seen_target = time.time()
@@ -701,7 +694,6 @@ class SpotBaseEnv(SpotRobotSubscriberMixin, gym.Env):
             y1 = int(y1)
             x2 = int(x2)
             y2 = int(y2)
-
 
         # Create bbox mask from selected detection
         cx = int(np.mean([x1, x2]))
