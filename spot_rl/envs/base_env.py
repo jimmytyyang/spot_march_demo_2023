@@ -673,7 +673,7 @@ class SpotBaseEnv(SpotRobotSubscriberMixin, gym.Env):
             if save_image:
                 marked_img = img.copy()
 
-            self.owlvit.update_label([[self.owlvit_pick_up_object_name]])
+            self.owlvit.update_label(self.owlvit_pick_up_object_name)
             bbox_xy = self.owlvit.run_inference(img)
 
             self.curr_forget_steps = 0
