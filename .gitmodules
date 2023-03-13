@@ -1,0 +1,3 @@
+[submodule "spot_rl/llm"]
+	path = spot_rl/llm
+	url = https://github.com/SergioArnaud/rearrange_llm.git
