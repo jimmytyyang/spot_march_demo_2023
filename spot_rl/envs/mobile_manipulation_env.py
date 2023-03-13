@@ -90,6 +90,8 @@ def main(spot, use_mixer, config, out_path=None):
                 arm_action=arm_action,
                 nav_silence_only=nav_silence_only,
             )
+            # if done:
+            #     import pdb; pdb.set_trace()
 
             if use_mixer and info.get("grasp_success", False):
                 policy.policy.prev_nav_masks *= 0
@@ -114,9 +116,10 @@ def main(spot, use_mixer, config, out_path=None):
             env.stopwatch.print_stats(latest=True)
 
         # Ensure gripper is open (place may have timed out)
-        if not env.place_attempted:
-            env.spot.open_gripper()
-            time.sleep(2)
+        # if not env.place_attempted:
+        #     print("open gripper in place attempted")
+        #     env.spot.open_gripper()
+        #     time.sleep(2)
 
     out_data.append((time.time(), env.x, env.y, env.yaw))
 
@@ -208,7 +211,9 @@ class SpotMobileManipulationBaseEnv(SpotGazeEnv):
             positions=np.deg2rad(self.config.GAZE_ARM_JOINT_ANGLES), travel_time=0.75
         )
         # Wait for arm to arrive to position
+        # import pdb; pdb.set_trace()
         time.sleep(0.75)
+        print("open gripper called in SpotMobileManipulationBaseEnv")
         self.spot.open_gripper()
 
         # Nav
@@ -227,8 +232,12 @@ class SpotMobileManipulationBaseEnv(SpotGazeEnv):
         return SpotBaseEnv.reset(self)
 
     def step(self, base_action, arm_action, *args, **kwargs):
+        # import pdb; pdb.set_trace()
         _, xy_dist, z_dist = self.get_place_distance()
         place = xy_dist < self.config.SUCC_XY_DIST and z_dist < self.config.SUCC_Z_DIST
+        if place:
+            print("place is true")
+
         if self.grasp_attempted:
             grasp = False
         else:
@@ -242,10 +251,10 @@ class SpotMobileManipulationBaseEnv(SpotGazeEnv):
         # Slow the base down if we are close to the nav target for grasp to limit blur
         if (
             not self.grasp_attempted
-            and self.rho < 0.2
-            and abs(self.heading_err) < np.rad2deg(30)
+            and self.rho < 0.5
+            and abs(self.heading_err) < np.rad2deg(45)
         ):
-            self.slowdown_base = 0.75  # Hz
+            self.slowdown_base = 0.5  # Hz
             print("!!!!!!Slow mode!!!!!!")
         else:
             self.slowdown_base = -1
@@ -261,6 +270,8 @@ class SpotMobileManipulationBaseEnv(SpotGazeEnv):
             *args,
             **kwargs,
         )
+        if done:
+            print("done is true")
 
         if self.grasp_attempted and not self.navigating_to_place:
             # Determine where to go based on what object we've just grasped
@@ -325,16 +336,22 @@ class SpotMobileManipulationSeqEnv(SpotMobileManipulationBaseEnv):
                 self.say("Starting place")
                 self.timeout_start = time.time()
 
+        if self.current_task == Tasks.PLACE and time.time() > self.timeout_start + 10:
+            # call place after 10s of trying
+            print("Place failed to reach target")
+            done = True
+
+
         if not pre_step_navigating_to_place and self.navigating_to_place:
             # This means that the Gaze task has just ended
             self.current_task = Tasks.NAV
+
 
         info["correct_skill"] = self.current_task
 
         self.use_mrcnn = self.current_task == Tasks.GAZE
 
-        if time.time() > self.timeout_start + 15:
-            done = True
+        #
 
         return observations, reward, done, info
 

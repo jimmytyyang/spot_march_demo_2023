@@ -36,12 +36,13 @@ def main(spot):
     observations = env.reset()
     done = False
     env.say("Starting episode")
-    try:
-        while not done:
-            action = policy.act(observations)
-            observations, _, done, _ = env.step(arm_action=action)
-    finally:
-        spot.power_off()
+    while not done:
+        action = policy.act(observations)
+        observations, _, done, _ = env.step(arm_action=action)
+    if done:
+        while True:
+            env.reset()
+            spot.set_base_velocity(0, 0, 0, 1.0)
 
 
 class SpotPlaceEnv(SpotBaseEnv):

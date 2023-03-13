@@ -58,9 +58,9 @@ class SpotImagePublisher:
 
     def publish(self):
         st = time.time()
-        if st < self.last_publish + 1 / MAX_PUBLISH_FREQ:
-            time.sleep(0.01)
-            return
+        # if st < self.last_publish + 1 / MAX_PUBLISH_FREQ:
+        #     time.sleep(0.01)
+        #     return
         self._publish()
         self.last_publish = time.time()
 

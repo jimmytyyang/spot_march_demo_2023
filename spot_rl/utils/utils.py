@@ -91,7 +91,9 @@ def get_clutter_amounts():
 
 
 def arr2str(arr):
-    return f"[{', '.join([f'{i:.2f}' for i in arr])}]"
+    if arr is not None:
+        return f"[{', '.join([f'{i:.2f}' for i in arr])}]"
+    return
 
 
 class FixSizeOrderedDict(OrderedDict):

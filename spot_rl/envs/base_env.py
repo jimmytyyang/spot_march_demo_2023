@@ -255,11 +255,13 @@ class SpotBaseEnv(SpotRobotSubscriberMixin, gym.Env):
                 if success:
                     # Just leave the object on the receptacle if desired
                     if self.config.DONT_PICK_UP:
+                        print("open_gripper in don't pick up")
                         self.spot.open_gripper()
                     self.grasp_attempted = True
                     arm_positions = np.deg2rad(self.config.PLACE_ARM_JOINT_ANGLES)
                 else:
                     self.say("BD grasp API failed.")
+                    self.spot.open_gripper()
                     self.locked_on_object_count = 0
                     arm_positions = np.deg2rad(self.config.GAZE_ARM_JOINT_ANGLES)
                     time.sleep(2)
@@ -276,6 +278,7 @@ class SpotBaseEnv(SpotRobotSubscriberMixin, gym.Env):
             print("PLACE ACTION CALLED: Opening the gripper!")
             if self.get_grasp_angle_to_xy() < np.deg2rad(30):
                 self.turn_wrist()
+                print("open gripper in place")
             self.spot.open_gripper()
             time.sleep(0.3)
             self.place_attempted = True
@@ -315,8 +318,8 @@ class SpotBaseEnv(SpotRobotSubscriberMixin, gym.Env):
 
         if not (grasp or place):
             if self.slowdown_base > -1 and base_action is not None:
-                self.ctrl_hz = self.slowdown_base
-                base_action = np.array(base_action) * self.slowdown_base / self.ctrl_hz
+                # self.ctrl_hz = self.slowdown_base
+                base_action = np.array(base_action) * self.slowdown_base # / self.ctrl_hz
             if base_action is not None and arm_action is not None:
                 self.spot.set_base_vel_and_arm_pos(
                     *base_action,
@@ -622,7 +625,7 @@ class SpotBaseEnv(SpotRobotSubscriberMixin, gym.Env):
         return x1, y1, x2, y2
 
     @staticmethod
-    def locked_on_object(x1, y1, x2, y2, height, width, radius=0.1):
+    def locked_on_object(x1, y1, x2, y2, height, width, radius=0.15):
         cy, cx = height // 2, width // 2
         # Locked on if the center of the image is in the bbox
         if x1 < cx < x2 and y1 < cy < y2:
@@ -641,7 +644,7 @@ class SpotBaseEnv(SpotRobotSubscriberMixin, gym.Env):
     def should_grasp(self):
         grasp = False
         if self.locked_on_object_count >= self.config.OBJECT_LOCK_ON_NEEDED:
-            if self.target_object_distance < 0.85:
+            if self.target_object_distance < 1.5:
                 if self.config.ASSERT_CENTERING:
                     x, y = self.obj_center_pixel
                     if abs(x / 640 - 0.5) < 0.25 or abs(y / 480 - 0.5) < 0.25:

@@ -27,10 +27,13 @@ def run_env(spot, config, target_obj_id=None, orig_pos=None):
     while not done:
         action = policy.act(observations)
         observations, _, done, _ = env.step(arm_action=action)
-    print("Returning to original position...")
-    baseline_navigate(spot, orig_pos, limits=False)
-    print("Returned.")
-    return orig_pos
+    # print("Returning to original position...")
+    # baseline_navigate(spot, orig_pos, limits=False)
+    # print("Returned.")
+    if done:
+        while True:
+            spot.set_base_velocity(0, 0, 0, 1.0)
+    return done
 
 
 def baseline_navigate(spot, waypoint, limits=True, **kwargs):
@@ -98,6 +101,7 @@ class SpotGazeEnv(SpotBaseEnv):
             positions=self.initial_arm_joint_angles, travel_time=1
         )
         self.spot.block_until_arm_arrives(cmd_id, timeout_sec=1)
+        print("Open gripper called in Gaze")
         self.spot.open_gripper()
 
         observations = super().reset(target_obj_id=target_obj_id, *args, **kwargs)
@@ -144,7 +148,4 @@ if __name__ == "__main__":
     args = parser.parse_args()
     config = construct_config(args.opts)
     with spot.get_lease(hijack=True):
-        try:
-            run_env(spot, config, target_obj_id=args.target_object)
-        finally:
-            spot.power_off()
+        run_env(spot, config, target_obj_id=args.target_object)
