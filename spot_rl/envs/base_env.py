@@ -732,7 +732,7 @@ class SpotBaseEnv(SpotRobotSubscriberMixin, gym.Env):
     @staticmethod
     def locked_on_object(x1, y1, x2, y2, height, width, radius=0.15):
         cy, cx = height // 2, width // 2
-        # Locked on if the center of the image is in the bbox
+        # Locked on if the center of the image is in the bboxf
         if x1 < cx < x2 and y1 < cy < y2:
             return True
 
