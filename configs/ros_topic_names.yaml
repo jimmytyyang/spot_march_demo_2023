@@ -8,6 +8,9 @@ FILTERED_HEAD_DEPTH: "/filtered_head_depth"
 FILTERED_HAND_DEPTH: "/filtered_hand_depth"
 
 MASK_RCNN_VIZ_TOPIC: "/mask_rcnn_visualizations"
+OWLVIT_VIZ_TOPIC:  '/owlvit_publisher'
+OWLVIT_DETECTIONS_TOPIC: ''
+
 DETECTIONS_TOPIC: "/mask_rcnn_detections"
 IMAGE_SCALE: "/image_scale"
 

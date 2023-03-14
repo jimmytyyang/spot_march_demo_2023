@@ -1,4 +1,6 @@
 import os
+import os
+os.environ["OPENAI_API_KEY"] = "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"
 import time
 from collections import Counter
 
@@ -20,6 +22,12 @@ from spot_rl.utils.utils import (
     object_id_to_nav_waypoint,
     place_target_from_waypoints,
 )
+from spot_rl.models.whisper import WhisperTranslator
+from spot_rl.models.sentence_similarity import SentenceSimilarity
+
+from spot_rl.llm.src.rearrange_llm import RearrangeEasyChain
+
+from hydra import compose, initialize
 
 CLUTTER_AMOUNTS = Counter()
 CLUTTER_AMOUNTS.update(get_clutter_amounts())
@@ -30,6 +38,12 @@ DEBUGGING = False
 
 
 def main(spot, use_mixer, config, out_path=None):
+    audio_to_text = WhisperTranslator()
+    sentence_similarity = SentenceSimilarity()
+    with initialize(config_path='../llm/src/conf'):
+        llm_config = compose(config_name='config')
+    llm = RearrangeEasyChain(llm_config)
+
     if use_mixer:
         policy = MixerPolicy(
             config.WEIGHTS.MIXER,
@@ -47,6 +61,18 @@ def main(spot, use_mixer, config, out_path=None):
             device=config.DEVICE,
         )
         env_class = SpotMobileManipulationSeqEnv
+
+    print('Give instruction!')
+    #audio_to_text.record()
+    #instruction = audio_to_text.translate()
+    instruction = 'bring me the ball from the dining_table and take it to the couch'
+    print(instruction)
+
+    nav_1, pick, nav_2, place = llm.parse_instructions(instruction)
+
+    print(nav_1, list(WAYPOINTS['place_targets'].keys()))
+    nav_1 = sentence_similarity.get_most_similar_in_list(nav_1, list(WAYPOINTS['place_targets'].keys()))
+    print(nav_1, list(WAYPOINTS['place_targets'].keys()))
 
     env = env_class(config, spot)
     env.power_robot()
