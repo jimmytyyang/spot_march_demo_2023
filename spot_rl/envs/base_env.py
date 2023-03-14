@@ -242,7 +242,7 @@ class SpotBaseEnv(SpotRobotSubscriberMixin, gym.Env):
         self.prev_base_moved = False
         self.should_end = False
 
-        self.owlvit_pick_up_object_name = "box"
+        self.owlvit_pick_up_object_name = None
 
         observations = self.get_observations()
         return observations
@@ -712,7 +712,6 @@ class SpotBaseEnv(SpotRobotSubscriberMixin, gym.Env):
             out_path = osp.join(GRASP_VIS_DIR, f'{time.time()}.png')
             cv2.imwrite(out_path, marked_img)
 
-        self.target_obj_name = 'ball'
         height, width = (480, 640)
         locked_on = self.locked_on_object(x1, y1, x2, y2, height, width)
         if locked_on:

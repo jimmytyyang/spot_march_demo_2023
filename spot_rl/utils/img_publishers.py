@@ -330,9 +330,9 @@ class SpotOWLVITPublisher(SpotProcessedImagesPublisher):
     subscriber_topic = rt.HAND_RGB
     publisher_topics = [rt.OWLVIT_VIZ_TOPIC]
 
-    def __init__(self):
+    def __init__(self, owlvit_label):
         self.config = config = construct_config()
-        self.owlvit = OwlVit([['lion plush', 'penguin plush', 'teddy bear', 'bear plush', 'caterpilar plush', 'ball plush', 'rubiks cube']], 0.075, True)
+        self.owlvit = OwlVit([[owlvit_label]], 0.075, True)
         self.image_scale = config.IMAGE_SCALE
         rospy.loginfo(f"[{self.name}]: Models loaded.")
         super().__init__()
@@ -349,7 +349,7 @@ class SpotOWLVITPublisher(SpotProcessedImagesPublisher):
         hand_rgb = self.msg_to_cv2(self.img_msg)
 
         # Detect the image from here
-        self.owlvit.update_label([["ball"]])
+        #self.owlvit.update_label([["ball"]])
         bbox_xy = self.owlvit.run_inference(hand_rgb)
 
         if bbox_xy is not None:
@@ -385,6 +385,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--local", action="store_true", help="fully local robot connection"
     )
+    # parser.add_argument("--owlvit_label", action="store_true")
     args = parser.parse_args()
     assert (
         len([i[1] for i in args._get_kwargs() if i[1]]) == 1
@@ -400,6 +401,8 @@ if __name__ == "__main__":
     core = args.core
     listen = args.listen
     local = args.local
+    # owlvit_label = args.owlvit_label
+    owlvit_label = 'ball'
 
     node = None
     if filter_head_depth:
@@ -409,7 +412,7 @@ if __name__ == "__main__":
     elif mrcnn:
         node = SpotMRCNNPublisher()
     elif owlvit:
-        node = SpotOWLVITPublisher()
+        node = SpotOWLVITPublisher(owlvit_label)
     elif decompress:
         node = SpotDecompressingRawImagesPublisher()
     elif raw or compress:

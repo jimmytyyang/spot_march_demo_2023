@@ -28,6 +28,7 @@ from spot_rl.models.sentence_similarity import SentenceSimilarity
 from spot_rl.llm.src.rearrange_llm import RearrangeEasyChain
 
 from hydra import compose, initialize
+import subprocess
 
 CLUTTER_AMOUNTS = Counter()
 CLUTTER_AMOUNTS.update(get_clutter_amounts())
@@ -36,13 +37,28 @@ DOCK_ID = int(os.environ.get("SPOT_DOCK_ID", 520))
 
 DEBUGGING = False
 
-
 def main(spot, use_mixer, config, out_path=None):
     audio_to_text = WhisperTranslator()
     sentence_similarity = SentenceSimilarity()
     with initialize(config_path='../llm/src/conf'):
         llm_config = compose(config_name='config')
     llm = RearrangeEasyChain(llm_config)
+    print('Give instruction!')
+    #audio_to_text.record()
+    #instruction = audio_to_text.translate()
+    instruction = 'bring me the ball from the kitchen counter and take it to the sofa'
+    print(instruction)
+
+    nav_1, pick, nav_2, _ = llm.parse_instructions(instruction)
+    print('PARSED', nav_1, pick, nav_2)
+
+    nav_1 = sentence_similarity.get_most_similar_in_list(nav_1, list(WAYPOINTS['nav_targets'].keys()))
+    nav_2 = sentence_similarity.get_most_similar_in_list(nav_2, list(WAYPOINTS['nav_targets'].keys()))
+    print('Most Similar', nav_1, pick, nav_2)
+
+    ##
+    # subprocess.call(['tmux', 'kill-session', '-t', 'img_pub'])
+    # subprocess.call(['tmux', 'new', '-s', 'img_pub', '-d', f"'$CONDA_PREFIX/bin/python -m spot_rl.utils.img_publishers --local --owlvit_parser={pick}'"])
 
     if use_mixer:
         policy = MixerPolicy(
@@ -62,84 +78,82 @@ def main(spot, use_mixer, config, out_path=None):
         )
         env_class = SpotMobileManipulationSeqEnv
 
-    print('Give instruction!')
-    #audio_to_text.record()
-    #instruction = audio_to_text.translate()
-    instruction = 'bring me the ball from the dining_table and take it to the couch'
-    print(instruction)
 
-    nav_1, pick, nav_2, place = llm.parse_instructions(instruction)
-
-    print(nav_1, list(WAYPOINTS['place_targets'].keys()))
-    nav_1 = sentence_similarity.get_most_similar_in_list(nav_1, list(WAYPOINTS['place_targets'].keys()))
-    print(nav_1, list(WAYPOINTS['place_targets'].keys()))
 
     env = env_class(config, spot)
     env.power_robot()
     time.sleep(1)
     count = Counter()
     out_data = []
-    for trip_idx in range(NUM_OBJECTS + 1):
-        if trip_idx < NUM_OBJECTS:
-            # 2 objects per receptacle
-            clutter_blacklist = [
-                i for i in WAYPOINTS["clutter"] if count[i] >= CLUTTER_AMOUNTS[i]
-            ]
-            waypoint_name, waypoint = closest_clutter(
-                env.x, env.y, clutter_blacklist=clutter_blacklist
-            )
-            count[waypoint_name] += 1
-            env.say("Going to " + waypoint_name + " to search for objects")
-        else:
-            env.say("Finished object rearrangement. Heading to dock.")
-            waypoint = nav_target_from_waypoints("dock")
-        observations = env.reset(waypoint=waypoint)
-        policy.reset()
-        done = False
+    #for trip_idx in range(NUM_OBJECTS + 1):
+    #    if trip_idx < NUM_OBJECTS:
+    #        # 2 objects per receptacle
+    #        clutter_blacklist = [
+    #            i for i in WAYPOINTS["clutter"] if count[i] >= CLUTTER_AMOUNTS[i]
+    #        ]
+    #        waypoint_name, waypoint = closest_clutter(
+    #            env.x, env.y, clutter_blacklist=clutter_blacklist
+    #        )
+    #        count[waypoint_name] += 1
+    #        env.say("Going to " + waypoint_name + " to search for objects")
+    #    else:
+    #        env.say("Finished object rearrangement. Heading to dock.")
+    #        waypoint = nav_target_from_waypoints("dock")
+    waypoint = nav_target_from_waypoints(nav_1)
+    observations = env.reset(waypoint=waypoint)
+    env.owlvit_pick_up_object_name = pick
+    env.target_obj_name = nav_2
+
+    policy.reset()
+    done = False
+    if use_mixer:
+        expert = None
+    else:
+        expert = Tasks.NAV
+    env.stopwatch.reset()
+    while not done:
+        out_data.append((time.time(), env.x, env.y, env.yaw))
+
         if use_mixer:
-            expert = None
+            base_action, arm_action = policy.act(observations)
+            nav_silence_only = policy.nav_silence_only
         else:
-            expert = Tasks.NAV
-        env.stopwatch.reset()
-        while not done:
-            out_data.append((time.time(), env.x, env.y, env.yaw))
+            base_action, arm_action = policy.act(observations, expert=expert)
+            nav_silence_only = True
+        env.stopwatch.record("policy_inference")
+        observations, _, done, info = env.step(
+            base_action=base_action,
+            arm_action=arm_action,
+            nav_silence_only=nav_silence_only,
+        )
+        # if done:
+        #     import pdb; pdb.set_trace()
 
-            if use_mixer:
-                base_action, arm_action = policy.act(observations)
-                nav_silence_only = policy.nav_silence_only
-            else:
-                base_action, arm_action = policy.act(observations, expert=expert)
-                nav_silence_only = True
-            env.stopwatch.record("policy_inference")
-            observations, _, done, info = env.step(
-                base_action=base_action,
-                arm_action=arm_action,
-                nav_silence_only=nav_silence_only,
-            )
-            # if done:
-            #     import pdb; pdb.set_trace()
+        if use_mixer and info.get("grasp_success", False):
+            policy.policy.prev_nav_masks *= 0
 
-            if use_mixer and info.get("grasp_success", False):
-                policy.policy.prev_nav_masks *= 0
+        if not use_mixer:
+            expert = info["correct_skill"]
 
-            if not use_mixer:
-                expert = info["correct_skill"]
+        #if trip_idx >= NUM_OBJECTS and env.get_nav_success(
+        #    observations, 0.3, np.deg2rad(10)
+        #):
+        #    # The robot has arrived back at the dock
+        #    break
 
-            if trip_idx >= NUM_OBJECTS and env.get_nav_success(
-                observations, 0.3, np.deg2rad(10)
-            ):
-                # The robot has arrived back at the dock
-                break
+        env.say("Finished object rearrangement. Heading to dock.")
+        waypoint = nav_target_from_waypoints("dock")
 
-            # Print info
-            # stats = [f"{k}: {v}" for k, v in info.items()]
-            # print(" ".join(stats))
 
-            # We reuse nav, so we have to reset it before we use it again.
-            if not use_mixer and expert != Tasks.NAV:
-                policy.nav_policy.reset()
+        # Print info
+        # stats = [f"{k}: {v}" for k, v in info.items()]
+        # print(" ".join(stats))
 
-            env.stopwatch.print_stats(latest=True)
+        # We reuse nav, so we have to reset it before we use it again.
+        if not use_mixer and expert != Tasks.NAV:
+            policy.nav_policy.reset()
+
+        env.stopwatch.print_stats(latest=True)
 
         # Ensure gripper is open (place may have timed out)
         # if not env.place_attempted:
@@ -301,7 +315,11 @@ class SpotMobileManipulationBaseEnv(SpotGazeEnv):
 
         if self.grasp_attempted and not self.navigating_to_place:
             # Determine where to go based on what object we've just grasped
-            waypoint_name, waypoint = object_id_to_nav_waypoint(self.target_obj_name)
+
+            waypoint_name = self.target_obj_name
+            waypoint = nav_target_from_waypoints(waypoint_name)
+
+            #waypoint_name, waypoint = object_id_to_nav_waypoint(self.target_obj_name)
             self.say("Navigating to " + waypoint_name)
             self.place_target = place_target_from_waypoints(waypoint_name)
             self.goal_xy, self.goal_heading = (waypoint[:2], waypoint[2])
@@ -356,7 +374,7 @@ class SpotMobileManipulationSeqEnv(SpotMobileManipulationBaseEnv):
             if not self.grasp_attempted:
                 self.current_task = Tasks.GAZE
                 self.timeout_start = time.time()
-                self.target_obj_name = None
+                #self.target_obj_name = None
             else:
                 self.current_task = Tasks.PLACE
                 self.say("Starting place")
