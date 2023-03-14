@@ -1,6 +1,6 @@
 import os
 import os
-os.environ["OPENAI_API_KEY"] = "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"
+os.environ["OPENAI_API_KEY"] = "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"
 import time
 from collections import Counter
 
@@ -163,6 +163,33 @@ def main(spot, use_mixer, config, out_path=None):
         #     env.spot.open_gripper()
         #     time.sleep(2)
 
+
+    # go to the dock location
+    done = False
+    expert = Tasks.NAV
+    while not done:
+        if use_mixer:
+            base_action, arm_action = policy.act(observations)
+            nav_silence_only = policy.nav_silence_only
+        else:
+            base_action, arm_action = policy.act(observations, expert=expert)
+            nav_silence_only = True
+        env.stopwatch.record("policy_inference")
+        observations, _, done, info = env.step(
+            base_action=base_action,
+            arm_action=arm_action,
+            nav_silence_only=nav_silence_only,
+        )
+        if done:
+            try:
+                env.say("Executing automatic docking")
+                spot.dock(dock_id=DOCK_ID, home_robot=True)
+                spot.home_robot()
+                break
+            except:
+                print("Dock not found... trying again")
+
+
     out_data.append((time.time(), env.x, env.y, env.yaw))
 
     if out_path is not None:
@@ -172,15 +199,6 @@ def main(spot, use_mixer, config, out_path=None):
         )
         with open(out_path, "w") as f:
             f.write(data)
-
-    env.say("Executing automatic docking")
-    dock_start_time = time.time()
-    while time.time() - dock_start_time < 2:
-        try:
-            spot.dock(dock_id=DOCK_ID, home_robot=True)
-        except:
-            print("Dock not found... trying again")
-            time.sleep(0.1)
 
 
 class Tasks:
