@@ -36,6 +36,9 @@ from spot_rl.utils.stopwatch import Stopwatch
 from spot_rl.utils.utils import construct_config
 from spot_rl.utils.utils import ros_topics as rt
 
+# Detection using owlvit model
+from spot_rl.utils.owlvit_utils import OwlVit
+
 MAX_PUBLISH_FREQ = 20
 MAX_DEPTH = 3.5
 MAX_HAND_DEPTH = 1.7
@@ -319,6 +322,53 @@ class SpotMRCNNPublisher(SpotProcessedImagesPublisher):
 
         self.pubs[rt.DETECTIONS_TOPIC].publish(detections_str)
         self.pubs[rt.MASK_RCNN_VIZ_TOPIC].publish(viz_img_msg)
+        print("ssss")
+
+
+class SpotOWLVITPublisher(SpotProcessedImagesPublisher):
+    name = "spot_owlvit_publisher"
+    subscriber_topic = rt.HAND_RGB
+    publisher_topics = [rt.OWLVIT_VIZ_TOPIC]
+
+    def __init__(self):
+        self.config = config = construct_config()
+        self.owlvit = OwlVit([['lion plush', 'penguin plush', 'teddy bear', 'bear plush', 'caterpilar plush', 'ball plush', 'rubiks cube']], 0.075, True)
+        self.image_scale = config.IMAGE_SCALE
+        rospy.loginfo(f"[{self.name}]: Models loaded.")
+        super().__init__()
+        self.pubs[rt.OWLVIT_DETECTIONS_TOPIC] = rospy.Publisher(
+            rt.OWLVIT_DETECTIONS_TOPIC, String, queue_size=1, tcp_nodelay=True
+        )
+
+    def _publish(self):
+        stopwatch = Stopwatch()
+
+        # Publish the OWLVIT detections
+        header = self.img_msg.header
+        timestamp = header.stamp
+        hand_rgb = self.msg_to_cv2(self.img_msg)
+
+        # Detect the image from here
+        self.owlvit.update_label([["ball"]])
+        bbox_xy = self.owlvit.run_inference(hand_rgb)
+
+        if bbox_xy is not None:
+            bbox_xy_string = str(bbox_xy[0])+","+str(bbox_xy[1])+','+str(bbox_xy[2])+','+str(bbox_xy[3])
+        else:
+            bbox_xy_string = "None"
+        detections_str = f"{int(timestamp.nsecs)}|{bbox_xy_string}"
+
+        #viz_img = self.mrcnn.visualize_inference(viz_img, pred)
+        if not detections_str.endswith("None"):
+            print(detections_str)
+        #viz_img_msg = self.cv2_to_msg(viz_img)
+        #viz_img_msg.header = header
+        stopwatch.record("vis_secs")
+
+        stopwatch.print_stats()
+
+        self.pubs[rt.OWLVIT_DETECTIONS_TOPIC].publish(detections_str)
+        #self.pubs[rt.OWLVIT_VIZ_TOPIC].publish(viz_img_msg)
 
 
 if __name__ == "__main__":
@@ -326,6 +376,7 @@ if __name__ == "__main__":
     parser.add_argument("--filter-head-depth", action="store_true")
     parser.add_argument("--filter-hand-depth", action="store_true")
     parser.add_argument("--mrcnn", action="store_true")
+    parser.add_argument("--owlvit", action="store_true")
     parser.add_argument("--decompress", action="store_true")
     parser.add_argument("--raw", action="store_true")
     parser.add_argument("--compress", action="store_true")
@@ -342,6 +393,7 @@ if __name__ == "__main__":
     filter_head_depth = args.filter_head_depth
     filter_hand_depth = args.filter_hand_depth
     mrcnn = args.mrcnn
+    owlvit = args.owlvit
     decompress = args.decompress
     raw = args.raw
     compress = args.compress
@@ -356,6 +408,8 @@ if __name__ == "__main__":
         node = SpotFilteredHandDepthImagesPublisher()
     elif mrcnn:
         node = SpotMRCNNPublisher()
+    elif owlvit:
+        node = SpotOWLVITPublisher()
     elif decompress:
         node = SpotDecompressingRawImagesPublisher()
     elif raw or compress:
@@ -372,7 +426,8 @@ if __name__ == "__main__":
         if core:
             flags = ["--compress"]
         else:
-            flags = ["--filter-head-depth", "--filter-hand-depth", "--mrcnn"]
+            #flags = ["--filter-head-depth", "--filter-hand-depth", "--mrcnn"]
+            flags = ["--filter-head-depth", "--filter-hand-depth", "--owlvit", "--mrcnn"]
             if listen:
                 flags.append("--decompress")
             elif local:

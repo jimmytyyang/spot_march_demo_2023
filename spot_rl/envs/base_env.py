@@ -54,6 +54,12 @@ ORIG_HEIGHT = 480
 WIDTH_SCALE = 0.5
 HEIGHT_SCALE = 0.5
 
+# Detection using owlvit model
+from spot_rl.utils.owlvit_utils import OwlVit
+# Sequential flag
+USE_IMG_RESPONSE = False
+
+
 
 def pad_action(action):
     """We only control 4 out of 6 joints; add zeros to non-controllable indices."""
@@ -119,7 +125,7 @@ class SpotBaseEnv(SpotRobotSubscriberMixin, gym.Env):
         self.obj_center_pixel = None
         self.target_obj_name = None
         self.last_target_obj = None
-        self.use_mrcnn = True
+        self.use_mrcnn = config.USE_MRCNN
         self.target_object_distance = -1
         self.detections_str_synced = "None"
         self.latest_synchro_obj_detection = None
@@ -150,13 +156,35 @@ class SpotBaseEnv(SpotRobotSubscriberMixin, gym.Env):
                 print("...msgs received.")
                 scale_pub = rospy.Publisher(rt.IMAGE_SCALE, Float32, queue_size=1)
                 scale_pub.publish(config.IMAGE_SCALE)
+            else: # This is the one that uses owlvit model
+                rospy.Subscriber(rt.OWLVIT_DETECTIONS_TOPIC, String, self.detections_cb)
+                print("Parallel inference selected: Waiting for OWLVIT msgs...")
+                st = time.time()
+                while (
+                    len(self.detections_buffer["detections"]) == 0
+                    and time.time() < st + 5
+                ):
+                    pass
+                assert (
+                    len(self.detections_buffer["detections"]) > 0
+                ), "OWLVIT msgs not found!"
+                print("...msgs received.")
+                scale_pub = rospy.Publisher(rt.IMAGE_SCALE, Float32, queue_size=1)
+                scale_pub.publish(config.IMAGE_SCALE)
         elif config.USE_MRCNN:
             self.mrcnn = get_mrcnn_model(config)
+            self.deblur_gan = get_deblurgan_model(config)
+        else:
+            self.owlvit = OwlVit([['lion plush', 'penguin plush', 'teddy bear', 'bear plush', 'caterpilar plush', 'ball plush', 'rubiks cube']], 0.1, False)
             self.deblur_gan = get_deblurgan_model(config)
 
         if config.USE_MRCNN:
             self.mrcnn_viz_pub = rospy.Publisher(
                 rt.MASK_RCNN_VIZ_TOPIC, Image, queue_size=1
+            )
+        else: # This is the one that uses owlvit model
+            self.owlvit_viz_pub = rospy.Publisher(
+                rt.OWLVIT_VIZ_TOPIC, Image, queue_size=1
             )
 
         if config.USE_HEAD_CAMERA:
@@ -166,6 +194,8 @@ class SpotBaseEnv(SpotRobotSubscriberMixin, gym.Env):
                 pass
             assert self.filtered_head_depth is not None, "Depth msgs not found!"
             print("...msgs received.")
+
+        self.owlvit_pick_up_object_name = "box"
 
     @property
     def filtered_hand_depth(self):
@@ -200,7 +230,7 @@ class SpotBaseEnv(SpotRobotSubscriberMixin, gym.Env):
         self.num_steps = 0
         self.reset_ran = True
         self.grasp_attempted = False
-        self.use_mrcnn = True
+        self.use_mrcnn = self.config.USE_MRCNN
         self.locked_on_object_count = 0
         self.curr_forget_steps = 0
         self.target_obj_name = target_obj_id
@@ -211,6 +241,8 @@ class SpotBaseEnv(SpotRobotSubscriberMixin, gym.Env):
         self.slowdown_base = -1
         self.prev_base_moved = False
         self.should_end = False
+
+        self.owlvit_pick_up_object_name = "box"
 
         observations = self.get_observations()
         return observations
@@ -248,7 +280,7 @@ class SpotBaseEnv(SpotRobotSubscriberMixin, gym.Env):
 
             if self.curr_forget_steps == 0:
                 print(f"GRASP CALLED: Aiming at (x, y): {self.obj_center_pixel}!")
-                self.say("Grasping " + self.target_obj_name)
+                self.say("Grasping " + "object")
 
                 # The following cmd is blocking
                 success = self.attempt_grasp()
@@ -483,10 +515,7 @@ class SpotBaseEnv(SpotRobotSubscriberMixin, gym.Env):
         arm_depth = np.float32(arm_depth) / 255.0
 
         # Generate object mask channel
-        if self.use_mrcnn:
-            obj_bbox = self.update_gripper_detections(arm_depth, save_image)
-        else:
-            obj_bbox = None
+        obj_bbox = self.update_gripper_detections(arm_depth, save_image)
 
         if obj_bbox is not None:
             self.target_object_distance, arm_depth_bbox = get_obj_dist_and_bbox(
@@ -499,7 +528,10 @@ class SpotBaseEnv(SpotRobotSubscriberMixin, gym.Env):
         return arm_depth, arm_depth_bbox
 
     def update_gripper_detections(self, arm_depth, save_image=False):
-        det = self.get_mrcnn_det(arm_depth, save_image=save_image)
+        if self.use_mrcnn:
+            det = self.get_mrcnn_det(arm_depth, save_image=save_image)
+        else:
+            det = self.get_owlvit_det(arm_depth, save_image=save_image)
         if det is None:
             self.curr_forget_steps += 1
             self.locked_on_object_count = 0
@@ -617,6 +649,80 @@ class SpotBaseEnv(SpotRobotSubscriberMixin, gym.Env):
                 print("Lost lock-on!")
             self.locked_on_object_count = 0
 
+        return x1, y1, x2, y2
+
+    def get_owlvit_det(self, arm_depth, save_image=False):
+        marked_img = None
+        if self.parallel_inference_mode:
+            bbox_xy = str(self.detections_str_synced)
+        else:
+            # Get the image of the hand
+            if USE_IMG_RESPONSE:
+                # Get Spot camera image
+                image_responses = self.spot.get_image_responses(IMG_SOURCES, quality=None)
+                for image_response, source in zip(image_responses, IMG_SOURCES):
+                    if source is SpotCamIds.HAND_COLOR:
+                        img = image_response_to_cv2(image_response, reorient=True)
+            else:
+                bbox_xy = self.msg_to_cv2(self.msgs[rt.HAND_RGB])
+
+            if save_image:
+                marked_img = img.copy()
+
+            self.owlvit.update_label([[self.owlvit_pick_up_object_name]])
+            bbox_xy = self.owlvit.run_inference(img)
+
+            self.curr_forget_steps = 0
+
+        # Reset tue cur_forget_steps to avoid grasping fail
+        self.curr_forget_steps = 0
+
+        if bbox_xy is None or bbox_xy == 'None':
+            return None
+
+        if USE_IMG_RESPONSE:
+            x1, y1, x2, y2 = bbox_xy
+        else:
+            x1, y1, x2, y2 = bbox_xy.split(',')
+            x1 = int(x1)
+            y1 = int(y1)
+            x2 = int(x2)
+            y2 = int(y2)
+
+        # Create bbox mask from selected detection
+        cx = int(np.mean([x1, x2]))
+        cy = int(np.mean([y1, y2]))
+        self.obj_center_pixel = (cx, cy)
+
+        if save_image:
+            if marked_img is None:
+                while self.detection_timestamp not in self.detections_buffer['viz']:
+                    pass
+                viz_img = self.detections_buffer['viz'][self.detection_timestamp]
+                marked_img = self.cv_bridge.imgmsg_to_cv2(viz_img)
+                marked_img = cv2.resize(
+                    marked_img,
+                    (0, 0),
+                    fx=1 / self.config.IMAGE_SCALE,
+                    fy=1 / self.config.IMAGE_SCALE,
+                    interpolation=cv2.INTER_AREA,
+                )
+            marked_img = cv2.circle(marked_img, (cx, cy), 5, (0, 0, 255), -1)
+            marked_img = cv2.rectangle(marked_img, (x1, y1), (x2, y2), (0, 0, 255))
+            out_path = osp.join(GRASP_VIS_DIR, f'{time.time()}.png')
+            cv2.imwrite(out_path, marked_img)
+
+        self.target_obj_name = 'ball'
+        height, width = (480, 640)
+        locked_on = self.locked_on_object(x1, y1, x2, y2, height, width)
+        if locked_on:
+            self.locked_on_object_count += 1
+            print(f'Locked on to target {self.locked_on_object_count} time(s)...')
+        else:
+            if self.locked_on_object_count > 0:
+                print('Lost lock-on!')
+            self.locked_on_object_count = 0
+        time.sleep(0.8)
         return x1, y1, x2, y2
 
     def get_det_bbox(self, det):

@@ -290,7 +290,7 @@ class SpotMobileManipulationBaseEnv(SpotGazeEnv):
         self.rho = rho
         goal_heading = observations["goal_heading"][0]
         self.heading_err = goal_heading
-        self.use_mrcnn = True
+        self.use_mrcnn = False
         observations.update(super().get_observations())
         observations["obj_start_sensor"] = self.get_place_sensor()
 
@@ -349,8 +349,7 @@ class SpotMobileManipulationSeqEnv(SpotMobileManipulationBaseEnv):
 
         info["correct_skill"] = self.current_task
 
-        self.use_mrcnn = self.current_task == Tasks.GAZE
-
+        self.use_mrcnn = False
         #
 
         return observations, reward, done, info
