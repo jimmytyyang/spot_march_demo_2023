@@ -350,7 +350,9 @@ class SpotOWLVITPublisher(SpotProcessedImagesPublisher):
 
         # Detect the image from here
         #self.owlvit.update_label([["ball"]])
+        print(self.owlvit.labels)
         bbox_xy, viz_img = self.owlvit.run_inference_and_return_img(hand_rgb)
+
 
         if bbox_xy is not None:
             bbox_xy_string = str(bbox_xy[0])+","+str(bbox_xy[1])+','+str(bbox_xy[2])+','+str(bbox_xy[3])
@@ -386,11 +388,12 @@ if __name__ == "__main__":
     parser.add_argument(
         "--local", action="store_true", help="fully local robot connection"
     )
-    # parser.add_argument("--owlvit_label", action="store_true")
+    parser.add_argument("--owlvit_label")
     args = parser.parse_args()
-    assert (
-        len([i[1] for i in args._get_kwargs() if i[1]]) == 1
-    ), "One and only one arg must be provided."
+    print(args)
+    #assert (
+    #    len([i[1] for i in args._get_kwargs() if i[1]]) == 1
+    #), "One and only one arg must be provided."
 
     filter_head_depth = args.filter_head_depth
     filter_hand_depth = args.filter_hand_depth
@@ -402,8 +405,8 @@ if __name__ == "__main__":
     core = args.core
     listen = args.listen
     local = args.local
-    # owlvit_label = args.owlvit_label
-    owlvit_label = 'can'
+    owlvit_label = args.owlvit_label
+    #owlvit_label = 'pill bottle'
 
     node = None
     if filter_head_depth:
@@ -421,6 +424,7 @@ if __name__ == "__main__":
         spot = Spot(name)
         if raw:
             node = SpotLocalRawImagesPublisher(spot)
+
         else:
             node = SpotLocalCompressedImagesPublisher(spot)
     else:
@@ -431,7 +435,7 @@ if __name__ == "__main__":
             flags = ["--compress"]
         else:
             #flags = ["--filter-head-depth", "--filter-hand-depth", "--mrcnn"]
-            flags = ["--filter-head-depth", "--filter-hand-depth", "--owlvit", "--mrcnn"]
+            flags = ["--filter-head-depth", "--filter-hand-depth", f'--owlvit --owlvit_label "{owlvit_label}"', "--mrcnn"]
             if listen:
                 flags.append("--decompress")
             elif local:

@@ -653,6 +653,7 @@ class SpotBaseEnv(SpotRobotSubscriberMixin, gym.Env):
         return x1, y1, x2, y2
 
     def get_owlvit_det(self, arm_depth, save_image=False):
+        #time.sleep(0.75)
         print("vvvv")
         print("save image", save_image)
         marked_img = None
@@ -725,7 +726,7 @@ class SpotBaseEnv(SpotRobotSubscriberMixin, gym.Env):
                 print('Lost lock-on!')
             self.locked_on_object_count = 0
         print("aaa")
-        #time.sleep(0.8)
+
         print("bbb")
         return x1, y1, x2, y2
 

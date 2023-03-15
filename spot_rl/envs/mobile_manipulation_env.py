@@ -1,6 +1,6 @@
 import os
 import os
-os.environ["OPENAI_API_KEY"] = "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"
+os.environ["OPENAI_API_KEY"] = "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"
 import time
 from collections import Counter
 
@@ -29,6 +29,7 @@ from spot_rl.llm.src.rearrange_llm import RearrangeEasyChain
 
 from hydra import compose, initialize
 import subprocess
+import time
 
 CLUTTER_AMOUNTS = Counter()
 CLUTTER_AMOUNTS.update(get_clutter_amounts())
@@ -38,15 +39,17 @@ DOCK_ID = int(os.environ.get("SPOT_DOCK_ID", 520))
 DEBUGGING = False
 
 def main(spot, use_mixer, config, out_path=None):
-    audio_to_text = WhisperTranslator()
+
+
+    #audio_to_text = WhisperTranslator()
     sentence_similarity = SentenceSimilarity()
     with initialize(config_path='../llm/src/conf'):
         llm_config = compose(config_name='config')
     llm = RearrangeEasyChain(llm_config)
-    print('Give instruction!')
+    #print('Give instruction!')
     #audio_to_text.record()
     #instruction = audio_to_text.translate()
-    instruction = 'take the can from the couch to the kitchen sink'
+    instruction = 'take the rubik cube from the sining table to the hamper'
     print(instruction)
 
     nav_1, pick, nav_2, _ = llm.parse_instructions(instruction)
@@ -56,9 +59,12 @@ def main(spot, use_mixer, config, out_path=None):
     nav_2 = sentence_similarity.get_most_similar_in_list(nav_2, list(WAYPOINTS['nav_targets'].keys()))
     print('Most Similar', nav_1, pick, nav_2)
 
-    ##
-    # subprocess.call(['tmux', 'kill-session', '-t', 'img_pub'])
-    # subprocess.call(['tmux', 'new', '-s', 'img_pub', '-d', f"'$CONDA_PREFIX/bin/python -m spot_rl.utils.img_publishers --local --owlvit_parser={pick}'"])
+    print('Calling processes')
+    subprocess.Popen(['tmux', 'kill-session', '-t', 'img_pub'])
+    cmd = f"tmux new -s img_pub -d '/home/akshara/anaconda3/envs/spot_ros/bin/python -m spot_rl.utils.img_publishers --local --owlvit_label \"{pick}\"'"
+    print(cmd)
+    s = subprocess.getstatusoutput(cmd)
+    print(s)
 
     if use_mixer:
         policy = MixerPolicy(
@@ -154,6 +160,9 @@ def main(spot, use_mixer, config, out_path=None):
         if not use_mixer and expert != Tasks.NAV:
             policy.nav_policy.reset()
             env.owlvit_pick_up_object_name = pick
+
+        if expert == Tasks.GAZE:
+            time.sleep(.75)
 
         env.stopwatch.print_stats(latest=True)
 
@@ -425,11 +434,13 @@ class SpotMobileManipulationSeqEnv(SpotMobileManipulationBaseEnv):
 
 
 if __name__ == "__main__":
+
     parser = get_default_parser()
     parser.add_argument("-m", "--use-mixer", action="store_true")
     parser.add_argument("--output")
     args = parser.parse_args()
     config = construct_config(args.opts)
+
     spot = (RemoteSpot if config.USE_REMOTE_SPOT else Spot)("RealSeqEnv")
     if config.USE_REMOTE_SPOT:
         try:
