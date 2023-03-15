@@ -1,6 +1,6 @@
 import os
 import os
-os.environ["OPENAI_API_KEY"] = "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"
+os.environ["OPENAI_API_KEY"] = "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"
 import time
 from collections import Counter
 
@@ -46,7 +46,7 @@ def main(spot, use_mixer, config, out_path=None):
     print('Give instruction!')
     #audio_to_text.record()
     #instruction = audio_to_text.translate()
-    instruction = 'bring me the ball from the bedroom stand and take it to the living table'
+    instruction = 'take the can from the couch to the kitchen sink'
     print(instruction)
 
     nav_1, pick, nav_2, _ = llm.parse_instructions(instruction)
@@ -100,8 +100,7 @@ def main(spot, use_mixer, config, out_path=None):
     #        env.say("Finished object rearrangement. Heading to dock.")
     #        waypoint = nav_target_from_waypoints("dock")
     waypoint = nav_target_from_waypoints(nav_1)
-    observations = env.reset(waypoint=waypoint)
-    env.owlvit_pick_up_object_name = pick
+    observations = env.reset(waypoint=waypoint, owlvit_pick_up_object_name="ball")
     env.target_obj_name = nav_2
 
     policy.reset()
@@ -154,6 +153,7 @@ def main(spot, use_mixer, config, out_path=None):
         # We reuse nav, so we have to reset it before we use it again.
         if not use_mixer and expert != Tasks.NAV:
             policy.nav_policy.reset()
+            env.owlvit_pick_up_object_name = pick
 
         env.stopwatch.print_stats(latest=True)
 
@@ -163,24 +163,44 @@ def main(spot, use_mixer, config, out_path=None):
         #     env.spot.open_gripper()
         #     time.sleep(2)
 
+    # Go to the dock
+    env.say("Finished object rearrangement. Heading to dock.")
+    waypoint = nav_target_from_waypoints("dock")
+    observations = env.reset(waypoint=waypoint)
+    expert = Tasks.NAV
+    policy.nav_policy.reset()
+    while True:
+        if use_mixer:
+            base_action, arm_action = policy.act(observations)
+            nav_silence_only = policy.nav_silence_only
+        else:
+            base_action, arm_action = policy.act(observations, expert=expert)
+            nav_silence_only = True
+        env.stopwatch.record("policy_inference")
+        observations, _, done, info = env.step(
+            base_action=base_action,
+            arm_action=arm_action,
+            nav_silence_only=nav_silence_only,
+        )
+        try:
+            spot.dock(dock_id=DOCK_ID, home_robot=True)
+            spot.home_robot()
+            break
+        except:
+            print("Dock not found... trying again")
+            time.sleep(0.1)
+
+    print("Done!")
+
     out_data.append((time.time(), env.x, env.y, env.yaw))
 
     if out_path is not None:
         data = (
-            "\n".join([",".join([str(i) for i in t_x_y_yaw]) for t_x_y_yaw in out_data])
-            + "\n"
+                "\n".join([",".join([str(i) for i in t_x_y_yaw]) for t_x_y_yaw in out_data])
+                + "\n"
         )
         with open(out_path, "w") as f:
             f.write(data)
-
-    env.say("Executing automatic docking")
-    dock_start_time = time.time()
-    while time.time() - dock_start_time < 2:
-        try:
-            spot.dock(dock_id=DOCK_ID, home_robot=True)
-        except:
-            print("Dock not found... trying again")
-            time.sleep(0.1)
 
 
 class Tasks:
@@ -281,8 +301,10 @@ class SpotMobileManipulationBaseEnv(SpotGazeEnv):
             print("place is true")
 
         if self.grasp_attempted:
+            print("A")
             grasp = False
         else:
+            print("b")
             grasp = self.should_grasp()
 
         if self.grasp_attempted:
@@ -301,6 +323,7 @@ class SpotMobileManipulationBaseEnv(SpotGazeEnv):
         else:
             self.slowdown_base = -1
         disable_oa = False if self.rho > 0.3 and self.config.USE_OA_FOR_NAV else None
+        # import ipdb; ipdb.set_trace()
         observations, reward, done, info = SpotBaseEnv.step(
             self,
             base_action=base_action,

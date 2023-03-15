@@ -332,7 +332,7 @@ class SpotOWLVITPublisher(SpotProcessedImagesPublisher):
 
     def __init__(self, owlvit_label):
         self.config = config = construct_config()
-        self.owlvit = OwlVit([[owlvit_label]], 0.075, True)
+        self.owlvit = OwlVit([[owlvit_label]], 0.05, True)
         self.image_scale = config.IMAGE_SCALE
         rospy.loginfo(f"[{self.name}]: Models loaded.")
         super().__init__()
@@ -350,7 +350,7 @@ class SpotOWLVITPublisher(SpotProcessedImagesPublisher):
 
         # Detect the image from here
         #self.owlvit.update_label([["ball"]])
-        bbox_xy = self.owlvit.run_inference(hand_rgb)
+        bbox_xy, viz_img = self.owlvit.run_inference_and_return_img(hand_rgb)
 
         if bbox_xy is not None:
             bbox_xy_string = str(bbox_xy[0])+","+str(bbox_xy[1])+','+str(bbox_xy[2])+','+str(bbox_xy[3])
@@ -358,17 +358,18 @@ class SpotOWLVITPublisher(SpotProcessedImagesPublisher):
             bbox_xy_string = "None"
         detections_str = f"{int(timestamp.nsecs)}|{bbox_xy_string}"
 
+        # We might need to do this for owlvit
         #viz_img = self.mrcnn.visualize_inference(viz_img, pred)
         if not detections_str.endswith("None"):
             print(detections_str)
-        #viz_img_msg = self.cv2_to_msg(viz_img)
-        #viz_img_msg.header = header
+        viz_img_msg = self.cv2_to_msg(viz_img)
+        viz_img_msg.header = header
         stopwatch.record("vis_secs")
 
         stopwatch.print_stats()
 
         self.pubs[rt.OWLVIT_DETECTIONS_TOPIC].publish(detections_str)
-        #self.pubs[rt.OWLVIT_VIZ_TOPIC].publish(viz_img_msg)
+        self.pubs[rt.OWLVIT_VIZ_TOPIC].publish(viz_img_msg)
 
 
 if __name__ == "__main__":
@@ -402,7 +403,7 @@ if __name__ == "__main__":
     listen = args.listen
     local = args.local
     # owlvit_label = args.owlvit_label
-    owlvit_label = 'ball'
+    owlvit_label = 'can'
 
     node = None
     if filter_head_depth:

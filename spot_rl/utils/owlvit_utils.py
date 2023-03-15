@@ -43,7 +43,22 @@ class OwlVit():
 
         return self.bounding_box(results)
 
-    def show_img_with_overlaid_bounding_boxes(self, img, results):
+    def run_inference_and_return_img(self, img):
+
+        inputs = self.processor(text=self.labels, images=img, return_tensors='pt')
+        target_sizes = torch.Tensor([img.shape[:2]])
+        # Inference
+        with torch.no_grad():
+            outputs = self.model(**inputs)
+
+        # Convert outputs (bounding boxes and class logits) to COCO API
+        results = self.processor.post_process(outputs=outputs, target_sizes=target_sizes)
+        if self.show_img:
+            self.show_img_with_overlaid_bounding_boxes(img, results)
+        return self.bounding_box(results), self.create_img_with_bounding_box(img, results)
+
+
+    def create_img_with_bounding_box(self, img, results):
 
         boxes, scores, labels = results[0]['boxes'], results[0]['scores'], results[0]['labels']
         font = cv2.FONT_HERSHEY_SIMPLEX
@@ -60,7 +75,11 @@ class OwlVit():
                 img = cv2.putText(
                     img, self.labels[0][label], (box[0], y), font, 1, (255,0,0), 2, cv2.LINE_AA
                 )
-        # Show
+        #Return
+        return img
+
+    def show_img_with_overlaid_bounding_boxes(self, img, results):
+        img = self.create_img_with_bounding_box(img, results)
         cv2.imshow('img', img)
         cv2.waitKey(1)
 

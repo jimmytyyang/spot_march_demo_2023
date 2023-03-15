@@ -215,7 +215,7 @@ class SpotBaseEnv(SpotRobotSubscriberMixin, gym.Env):
 
     def img_callback(self, topic, msg):
         super().img_callback(topic, msg)
-        if topic == rt.MASK_RCNN_VIZ_TOPIC:
+        if topic == rt.MASK_RCNN_VIZ_TOPIC or topic == rt.OWLVIT_VIZ_TOPIC:
             self.detections_buffer["viz"][int(msg.header.stamp.nsecs)] = msg
         elif topic == rt.FILTERED_HAND_DEPTH:
             self.detections_buffer["filtered_depth"][int(msg.header.stamp.nsecs)] = msg
@@ -258,7 +258,6 @@ class SpotBaseEnv(SpotRobotSubscriberMixin, gym.Env):
         disable_oa=None,
     ):
         """Moves the arm and returns updated observations
-
         :param base_action: np.array of velocities (linear, angular)
         :param arm_action: np.array of radians denoting how each joint is to be moved
         :param grasp: whether to call the grasp_hand_depth() method
@@ -276,7 +275,7 @@ class SpotBaseEnv(SpotRobotSubscriberMixin, gym.Env):
         if grasp:
             # Briefly pause and get latest gripper image to ensure precise grasp
             time.sleep(0.5)
-            self.get_gripper_images(save_image=True)
+            self.get_gripper_images(save_image=False)
 
             if self.curr_forget_steps == 0:
                 print(f"GRASP CALLED: Aiming at (x, y): {self.obj_center_pixel}!")
@@ -532,9 +531,11 @@ class SpotBaseEnv(SpotRobotSubscriberMixin, gym.Env):
             det = self.get_mrcnn_det(arm_depth, save_image=save_image)
         else:
             det = self.get_owlvit_det(arm_depth, save_image=save_image)
+        print("upddate gripper")
         if det is None:
             self.curr_forget_steps += 1
             self.locked_on_object_count = 0
+        print("here")
         return det
 
     def get_mrcnn_det(self, arm_depth, save_image=False):
@@ -652,6 +653,8 @@ class SpotBaseEnv(SpotRobotSubscriberMixin, gym.Env):
         return x1, y1, x2, y2
 
     def get_owlvit_det(self, arm_depth, save_image=False):
+        print("vvvv")
+        print("save image", save_image)
         marked_img = None
         if self.parallel_inference_mode:
             bbox_xy = str(self.detections_str_synced)
@@ -676,7 +679,7 @@ class SpotBaseEnv(SpotRobotSubscriberMixin, gym.Env):
 
         # Reset tue cur_forget_steps to avoid grasping fail
         self.curr_forget_steps = 0
-
+        print("bbox_xy:", bbox_xy)
         if bbox_xy is None or bbox_xy == 'None':
             return None
 
@@ -721,7 +724,9 @@ class SpotBaseEnv(SpotRobotSubscriberMixin, gym.Env):
             if self.locked_on_object_count > 0:
                 print('Lost lock-on!')
             self.locked_on_object_count = 0
-        time.sleep(0.8)
+        print("aaa")
+        #time.sleep(0.8)
+        print("bbb")
         return x1, y1, x2, y2
 
     def get_det_bbox(self, det):
@@ -732,7 +737,7 @@ class SpotBaseEnv(SpotRobotSubscriberMixin, gym.Env):
     @staticmethod
     def locked_on_object(x1, y1, x2, y2, height, width, radius=0.15):
         cy, cx = height // 2, width // 2
-        # Locked on if the center of the image is in the bboxf
+        # Locked on if the center of the image is in the bbox
         if x1 < cx < x2 and y1 < cy < y2:
             return True
 
@@ -747,6 +752,7 @@ class SpotBaseEnv(SpotRobotSubscriberMixin, gym.Env):
         return locked_on
 
     def should_grasp(self):
+        print("grasp here")
         grasp = False
         if self.locked_on_object_count >= self.config.OBJECT_LOCK_ON_NEEDED:
             if self.target_object_distance < 1.5:
