@@ -8,7 +8,8 @@ import argparse
 
 class OwlVit():
     def __init__(self, labels, score_threshold, show_img):
-        self.device = torch.device('cpu') #torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+        #self.device = torch.device('cpu')
+        self.device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
         self.model = OwlViTForObjectDetection.from_pretrained('google/owlvit-base-patch32')
         self.model.eval()
@@ -25,11 +26,13 @@ class OwlVit():
         img: an open cv image in (H, W, C) format
         '''
         # Process inputs
+        #img = img.to(self.device)
         inputs = self.processor(text=self.labels, images=img, return_tensors='pt')
 
         #Target image sizes (height, width) to rescale box predictions [batch_size, 2]
         #target_sizes = torch.Tensor([img.size[::-1]]) this is for PIL images
-        target_sizes = torch.Tensor([img.shape[:2]])
+        target_sizes = torch.Tensor([img.shape[:2]]).to(self.device)
+        inputs = inputs.to(self.device)
 
         # Inference
         with torch.no_grad():
@@ -37,6 +40,7 @@ class OwlVit():
 
         # Convert outputs (bounding boxes and class logits) to COCO API
         results = self.processor.post_process(outputs=outputs, target_sizes=target_sizes)
+        #img = img.to('cpu')
 
         if self.show_img:
             self.show_img_with_overlaid_bounding_boxes(img, results)
@@ -44,22 +48,27 @@ class OwlVit():
         return self.bounding_box(results)
 
     def run_inference_and_return_img(self, img):
+        #img = img.to(self.device)
 
         inputs = self.processor(text=self.labels, images=img, return_tensors='pt')
-        target_sizes = torch.Tensor([img.shape[:2]])
+        target_sizes = torch.Tensor([img.shape[:2]]).to(self.device)
+        inputs = inputs.to(self.device)
         # Inference
         with torch.no_grad():
             outputs = self.model(**inputs)
 
         # Convert outputs (bounding boxes and class logits) to COCO API
         results = self.processor.post_process(outputs=outputs, target_sizes=target_sizes)
-        if self.show_img:
-            self.show_img_with_overlaid_bounding_boxes(img, results)
+        #img = img.to('cpu')
+        #if self.show_img:
+        #    self.show_img_with_overlaid_bounding_boxes(img, results)
+
         return self.bounding_box(results), self.create_img_with_bounding_box(img, results)
 
 
     def create_img_with_bounding_box(self, img, results):
 
+        #boxes, scores, labels = results[0]['boxes'].to('cpu'), results[0]['scores'].to('cpu'), results[0]['labels'].to('cpu')
         boxes, scores, labels = results[0]['boxes'], results[0]['scores'], results[0]['labels']
         font = cv2.FONT_HERSHEY_SIMPLEX
 
@@ -86,6 +95,9 @@ class OwlVit():
     def bounding_box(self, results):
 
         boxes, scores, labels = results[0]['boxes'], results[0]['scores'], results[0]['labels']
+        boxes = boxes.to('cpu')
+        labels = labels.to('cpu')
+        scores = scores.to('cpu')
 
         target_box = []
         target_score = -float('inf')
@@ -114,7 +126,7 @@ class OwlVit():
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--file', type=str, default='/Users/jimmytyyang/Downloads/i1.jpg')
+    parser.add_argument('--file', type=str, default='/home/akshara/spot/spot_rl_experiments/spot_rl/grasp_visualizations/1650841878.2699108.png')
     parser.add_argument('--score_threshold', type=float, default=0.1)
     parser.add_argument('--show_img', type=bool, default=True)
     parser.add_argument('--labels', type=list, default=[['lion plush', 'penguin plush', 'teddy bear', 'bear plush', 'caterpilar plush', 'ball plush', 'rubiks cube']])

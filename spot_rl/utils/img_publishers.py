@@ -352,6 +352,7 @@ class SpotOWLVITPublisher(SpotProcessedImagesPublisher):
         #self.owlvit.update_label([["ball"]])
         print(self.owlvit.labels)
         bbox_xy, viz_img = self.owlvit.run_inference_and_return_img(hand_rgb)
+        print(bbox_xy)
 
 
         if bbox_xy is not None:
@@ -406,7 +407,7 @@ if __name__ == "__main__":
     listen = args.listen
     local = args.local
     owlvit_label = args.owlvit_label
-    #owlvit_label = 'pill bottle'
+    #owlvit_label = 'paper roll'
 
     node = None
     if filter_head_depth:
@@ -436,6 +437,7 @@ if __name__ == "__main__":
         else:
             #flags = ["--filter-head-depth", "--filter-hand-depth", "--mrcnn"]
             flags = ["--filter-head-depth", "--filter-hand-depth", f'--owlvit --owlvit_label "{owlvit_label}"', "--mrcnn"]
+            #flags = ["--filter-head-depth", "--filter-hand-depth", f'--owlvit', "--mrcnn"]
             if listen:
                 flags.append("--decompress")
             elif local:
