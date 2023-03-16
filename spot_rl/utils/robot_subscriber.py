@@ -11,7 +11,8 @@ from spot_rl.utils.utils import ros_topics as rt
 
 IMG_TOPICS = [
     rt.MASK_RCNN_VIZ_TOPIC,
-    #rt.OWLVIT_VIZ_TOPIC,
+    rt.OWLVIT_VIZ_TOPIC,
+    #rt.OWLVIT_DETECTIONS_TOPIC,
     rt.HEAD_DEPTH,
     rt.HAND_DEPTH,
     rt.HAND_RGB,
@@ -20,7 +21,8 @@ IMG_TOPICS = [
 ]
 NO_RAW_IMG_TOPICS = [
     rt.MASK_RCNN_VIZ_TOPIC,
-    #rt.OWLVIT_VIZ_TOPIC,
+    rt.OWLVIT_VIZ_TOPIC,
+    #rt.OWLVIT_DETECTIONS_TOPIC,
     rt.HAND_RGB,
     rt.FILTERED_HEAD_DEPTH,
     rt.FILTERED_HAND_DEPTH,
