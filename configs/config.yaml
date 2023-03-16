@@ -12,7 +12,7 @@ WEIGHTS:
   MRCNN_50: "weights/ikea_apricot_r50_normal_100_output_model_0003599.pth"
   DEBLURGAN: "weights/fpn_inception.h5"
 
-DEVICE: "cuda:0"
+DEVICE: "cpu" #"cuda:0"
 USE_REMOTE_SPOT: False
 PARALLEL_INFERENCE_MODE: True
 
