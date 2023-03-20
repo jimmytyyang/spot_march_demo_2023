@@ -19,6 +19,8 @@ def run_env(spot, config, target_obj_id=None, orig_pos=None):
     config.USE_HEAD_CAMERA = False
 
     env = SpotGazeEnv(config, spot)
+    # Here, we assign the target text name of the object
+    env.owlvit_pick_up_object_name = "ball"
     env.power_robot()
     policy = GazePolicy(config.WEIGHTS.GAZE, device=config.DEVICE)
     policy.reset()

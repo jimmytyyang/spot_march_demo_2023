@@ -375,6 +375,53 @@ class SpotOWLVITPublisher(SpotProcessedImagesPublisher):
         self.pubs[rt.OWLVIT_VIZ_TOPIC].publish(viz_img_msg)
 
 
+class SpotOWLVITPublisher(SpotProcessedImagesPublisher):
+    name = "spot_owlvit_publisher"
+    subscriber_topic = rt.HAND_RGB
+    publisher_topics = [rt.OWLVIT_VIZ_TOPIC]
+
+    def __init__(self):
+        self.config = config = construct_config()
+        self.owlvit = OwlVit([['lion plush', 'penguin plush', 'teddy bear', 'bear plush', 'caterpilar plush', 'ball plush', 'rubiks cube']], 0.1, False)
+        self.deblur_gan = get_deblurgan_model(config)
+        self.image_scale = config.IMAGE_SCALE
+        rospy.loginfo(f"[{self.name}]: Models loaded.")
+        super().__init__()
+        self.pubs[rt.OWLVIT_DETECTIONS_TOPIC] = rospy.Publisher(
+            rt.OWLVIT_DETECTIONS_TOPIC, String, queue_size=1, tcp_nodelay=True
+        )
+
+    def _publish(self):
+        stopwatch = Stopwatch()
+
+        # Publish the OWLVIT detections
+        header = self.img_msg.header
+        timestamp = header.stamp
+        hand_rgb = self.msg_to_cv2(self.img_msg)
+
+        # Detect the image from here
+        self.owlvit.update_label([["ball"]])
+        bbox_xy = self.owlvit.run_inference(img)
+
+        if bbox_xy is not None:
+            bbox_xy_string = str(bbox_xy[0])+","+str(bbox_xy[1])+','+str(bbox_xy[3])+','+str(bbox_xy[4])
+        else:
+            bbox_xy_string = "None"
+        detections_str = f"{int(timestamp.nsecs)}|{bbox_xy_string}"
+
+        viz_img = self.mrcnn.visualize_inference(viz_img, pred)
+        if not detections_str.endswith("None"):
+            print(detections_str)
+        viz_img_msg = self.cv2_to_msg(viz_img)
+        viz_img_msg.header = header
+        stopwatch.record("vis_secs")
+
+        stopwatch.print_stats()
+
+        self.pubs[rt.OWLVIT_DETECTIONS_TOPIC].publish(detections_str)
+        self.pubs[rt.OWLVIT_VIZ_TOPIC].publish(viz_img_msg)
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--filter-head-depth", action="store_true")
