@@ -12,7 +12,7 @@ WEIGHTS:
   MRCNN_50: "weights/ikea_apricot_r50_normal_100_output_model_0003599.pth"
   DEBLURGAN: "weights/fpn_inception.h5"
 
-DEVICE: "cuda:0"
+DEVICE: "cpu" #"cuda:0"
 USE_REMOTE_SPOT: False
 PARALLEL_INFERENCE_MODE: True
 
@@ -58,7 +58,7 @@ TERMINATE_ON_GRASP: False
 
 # Mask RCNN
 GRAYSCALE_MASK_RCNN: True
-USE_MRCNN: True
+USE_MRCNN: False
 USE_FPN_R50: False
 USE_DEBLURGAN: True
 IMAGE_SCALE: 0.7

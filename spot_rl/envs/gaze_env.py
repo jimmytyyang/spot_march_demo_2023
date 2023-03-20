@@ -7,11 +7,14 @@ from spot_wrapper.spot import Spot, wrap_heading
 from spot_rl.envs.base_env import SpotBaseEnv
 from spot_rl.real_policy import GazePolicy
 from spot_rl.utils.utils import construct_config, get_default_parser
+import os
 
 DEBUG = False
 
+DOCK_ID = int(os.environ.get("SPOT_DOCK_ID", 520))
 
 def run_env(spot, config, target_obj_id=None, orig_pos=None):
+
     # Don't need head cameras for Gaze
     config.USE_HEAD_CAMERA = False
 
@@ -33,6 +36,8 @@ def run_env(spot, config, target_obj_id=None, orig_pos=None):
     # baseline_navigate(spot, orig_pos, limits=False)
     # print("Returned.")
     if done:
+        # spot.dock(dock_id=DOCK_ID, home_robot=True)
+        # import pdb; pdb.set_trace()
         while True:
             spot.set_base_velocity(0, 0, 0, 1.0)
     return done
